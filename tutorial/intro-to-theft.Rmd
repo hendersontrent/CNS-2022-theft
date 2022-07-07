@@ -1,0 +1,287 @@
+---
+title: "The theft package for R"
+author: "Trent Henderson"
+date: "07/07/2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 3
+    theme: lumen
+---
+
+```{r setup, include = FALSE, warning = FALSE, error = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center")
+```
+
+```{r, echo = FALSE, warning = FALSE, error = FALSE, message = FALSE}
+# Load the datasets (pre-run as they takes hours for all feature sets
+
+load("all_features.Rda")
+load("all_features_z.Rda")
+load("mf_results.Rda")
+load("top_feature_results.Rda")
+```
+
+## Setting up the R environment
+
+We will first load the packages we need for the tutorial:
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(theft)
+```
+
+### A note on Python library installation
+
+To access the three Python libraries included in `theft`---`Kats`, `TSFEL`, and `tsfresh`--- you must have installed them on your system; preferably to a clean environment. Once this is done, you can point R to the correct Python location for the libraries using `theft::init_theft` (here is mine, for example---**remember, yours might be different**):
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+init_theft("~/opt/anaconda3/bin/python")
+```
+
+### Retrieving the dataset
+
+This tutorial uses the [Bonn EEG dataset](https://journals.aps.org/pre/abstract/10.1103/PhysRevE.64.061907)^[Andrzejak, Ralph G., et al. (2001) "Indications of nonlinear deterministic and finite-dimensional structures in time series of brain electrical activity: Dependence on recording region and brain state." Physical Review E 64(6): 061907.], which contains $N = 100$ unique time series for five different classes:
+
+1. `eyesOpen` --- awake with eyes open 
+2. `eyesClosed` --- awake with eyes closed
+3. `epileptogenic` --- epileptogenic zone
+4. `hippocampus` --- hippocampal formation of the opposite hemisphere of the brain
+5. `seizure` --- seizure activity
+
+You can download and save this dataset wherever you like, and just pass that filepath into `theft::process_hctsa_file` which automatically processes the Matlab file into a nice tidy dataframe. I have the dataset saved as "INP_Bonn_EEG.mat", so I can run the following:
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
+  mutate(id = unlist(id),
+         group = unlist(group))
+```
+
+## Understanding the dataset
+
+Before running any feature-based time-series analysis, we will first graph the data to get a visual sense for any temporal dynamics, particularly differences between the classes. We can plot a random sample of two time series from each class:
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+#' Function to sample IDs by class
+#' @param data the dataframe containing time-series data
+#' @param group_name string specifying the class to filter by
+#' @param n number of samples to generate
+#' @return object of class vector
+#' @author Trent Henderson
+#' 
+
+draw_samples <- function(data, group_name, n){
+  
+  set.seed(123)
+  
+  samps <- data %>%
+    filter(group == group_name) %>%
+    dplyr::select(id) %>%
+    distinct() %>%
+    pull(id) %>%
+    sample(size = n)
+  
+  return(samps)
+}
+
+ids <- unique(tmp$group) %>%
+  purrr::map(~ draw_samples(data = tmp, group_name = .x, n = 2)) %>%
+  unlist()
+
+tsplot <- tmp %>%
+  filter(id %in% ids) %>%
+  mutate(id = gsub(".dat", "\\1", id)) %>%
+  ggplot(aes(x = timepoint, y = values, colour = group)) +
+  geom_line(size = 0.3) +
+  labs(title = "Raw time series samples from all five classes",
+       x = "Time",
+       y = "Value",
+       colour = NULL) +
+  scale_colour_brewer(palette = "Dark2") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold")) +
+  facet_wrap(~id, ncol = 2, scales = "free_y")
+
+print(tsplot)
+```
+
+## Calculating time-series features
+
+Extracting features from time series is straightforward in `theft`. The `calculate_features` function handles all of the work for computing features from six open source feature sets: (i) `catch22` (R, 22 features; R implementation on CRAN is [`Rcatch22`](https://github.com/hendersontrent/Rcatch22)); (ii) `feasts` (R; 42 features); (iii) `tsfeatures` (R, 63 features); (iv) `Kats` (Python, 40 features); (v) `TSFEL` (Python, 390 features); and (vi) `tsfresh` (Python, 779 features). Note that all I am passing to `calculate_features` is the appropriate column names and a vector of feature set names whose features I wish to calculate. Simple^[Behind the scenes, `theft` does all the data wrangling to standardise the input and output format across the six feature sets.].
+
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
+all_features <- calculate_features(data = tmp, 
+                                   id_var = "id", 
+                                   time_var = "timepoint", 
+                                   values_var = "values", 
+                                   group_var = "group",
+                                   feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
+                                   seed = 123)
+```
+
+### z-scored version
+
+Note that we will also calculate feature for $z$-scored time series to ensure feature set comparisons of classification performance are fair later on, as non-temporal properties, such as the first two moments of the distribution can often distinguish classes, and not all the feature sets measure these properties:
+
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
+z_tmp <- tmp %>%
+  group_by(id) %>%
+  mutate(values = (values - mean(values, na.rm = TRUE)) / sd(values, na.rm = TRUE)) %>%
+  ungroup()
+
+all_features_z <- calculate_features(data = z_tmp, 
+                                   id_var = "id", 
+                                   time_var = "timepoint", 
+                                   values_var = "values", 
+                                   group_var = "group",
+                                   feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
+                                   seed = 123)
+```
+
+## Checking quality of extracted features
+
+We can visually inspect the proportion of successfully extracted values, `NaN` values, and `Inf` values using `theft::plot_quality_matrix`:
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+plot_quality_matrix(all_features)
+```
+
+## Plotting the data matrix
+
+We can inspect the time series $\times$ feature matrix by plotting values as a heatmap graphic which applies hierarchical clustering to order the rows and columns such that any informative structure can be visually teased out. In `theft`, `theft::plot_all_features` does this:
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+plot_all_features(all_features, 
+                        is_normalised = FALSE,
+                        id_var = "id", 
+                        method = "RobustSigmoid",
+                        clust_method = "average",
+                        interactive = FALSE) +
+        theme(legend.key.width = unit(1.5, "cm"))
+```
+
+## Projecting the features into a lower dimension
+
+The resulting feature space from running `theft::calculate_features` is large (the time series $\times$ feature matrix is $500 \times 1316$), which can make the data challenging to interpret. By reducing the dimensionality, down to, say, two dimensions, the resulting space is a lot of more interpretable. `theft` projects the feature matrix down to two dimensions to represent as a scatterplot in the `theft::plot_low_dimension` function. Currently, only principal components analysis (PCA) and $t$-distributed stochastic neighbour embedding ($t$-SNE) are supported. We will use $t$-SNE here, and draw a plot with the `perplexity` hyperparameter set to 15^[[See here](https://distill.pub/2016/misread-tsne/) for an excellent overview.]:
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+plot_low_dimension(all_features_z, 
+                   is_normalised = FALSE, 
+                   id_var = "id",
+                   group_var = "group", 
+                   method = "MinMax", 
+                   low_dim_method = "t-SNE", 
+                   perplexity = 15,
+                   plot = TRUE,
+                   seed = 123) +
+  theme(text = element_text(size = 14))
+```
+
+## Classifying time series
+
+Time-series classification is a common use-case for features. `theft` implements extensive pipelines for conducting classification work, providing access to all the classification algorithms available in the `caret` machine learning package. `theft` also contains sophisticated permutation testing options for understanding the statistical significance of classification results relative to an empirical null distribution---generated through either random permutations (shuffles) of the class labels from the original data (`null_testing_method = "ModelFreeShuffles"`) or through fitting classification models to data with randomly shuffled class labels (`null_testing_method = "NullModelFits"`). We will use `"ModelFreeShuffles"` (with 1000 permutations) here as it is much faster. We will also use a linear support vector machine (SVM) with 10-fold cross-validation.
+
+*NOTE: balanced classification accuracy is not needed here as all classes have the same number of samples.*
+
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
+mf_results <- fit_multi_feature_classifier(all_features_z, # Note the use of z-scored data
+                                           id_var = "id", 
+                                           group_var = "group",
+                                           by_set = TRUE, 
+                                           test_method = "svmLinear", 
+                                           use_balanced_accuracy = FALSE,
+                                           use_k_fold = TRUE, 
+                                           num_folds = 10, 
+                                           use_empirical_null = TRUE, 
+                                           null_testing_method = "ModelFreeShuffles",
+                                           p_value_method = "gaussian", 
+                                           num_permutations = 1000, 
+                                           seed = 123)
+```
+
+`theft::fit_multi_feature_classifier` returns a list object with named entries. In our case, we have:
+
+* `FeatureSetResultsPlot` --- plot comparing mean classification accuracy between feature sets
+* `TestStatistics` --- dataframe of classification accuracy results and $p$-values for them
+* `RawClassificationResults` --- dataframe of raw classification model outputs
+
+### Comparing performance between feature sets
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+print(mf_results$FeatureSetResultsPlot)
+```
+
+### Summarising statistical results
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+head(mf_results$TestStatistics)
+```
+
+### Viewing raw classification outputs
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+head(mf_results$RawClassificationResults)
+```
+
+## Identifying the top-performing individual features
+
+Fitting classifiers which use multiple features as inputs is often useful for building strong predictive models. However, we are also typically interested in understanding patterns in their dataset, such as interpreting the types of time-series analysis methods that best separate different classes, and the relationships between these top-performing features. This can be achieved using mass univariate statistical testing of individual features, quantifying their importance either with conventional statistical tests (e.g., $t$-tests, Wilcoxon Rank Sum Tests, and Signed Rank Tests), or with one-dimensional classification algorithms (e.g., linear SVM, random forest classifiers).
+
+`theft` implements the ability to identify top-performing features in the `theft::compute_top_features` function. For two-class problems, users can access these statistical tests by specifying either `test_method = "t-test"`, `test_method = "wilcox"`, or `test_method = "BinomialLogistic"` to fit the desired statistical test instead of a `caret` classification model. `theft::compute_top_features` allows users to fit the same set of `caret` classification models available in `theft::fit_multi_feature_classifier` in the one-dimensional space (i.e., the input to the algorithm is values on a single time-series feature), which can be used for two-class or multi-class problems (where traditional two-sample statistical tests cannot be used). Since we have a five-class problem here, we will stick with the linear SVM.
+
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
+top_feature_results <- compute_top_features(all_features, 
+                                            id_var = "id", 
+                                            group_var = "group",
+                                            num_features = 40, 
+                                            normalise_violin_plots = FALSE,
+                                            method = "RobustSigmoid",
+                                            cor_method = "spearman",
+                                            test_method = "svmLinear",
+                                            clust_method = "average",
+                                            use_balanced_accuracy = FALSE,
+                                            use_k_fold = TRUE,
+                                            num_folds = 10,
+                                            use_empirical_null =  TRUE,
+                                            null_testing_method = "ModelFreeShuffles",
+                                            num_permutations = 1000,
+                                            p_value_method = "gaussian",
+                                            pool_empirical_null = FALSE,
+                                            seed = 123)
+```
+
+`theft::compute_top_features` returns a list object with named entries. In our case, we have:
+
+* `ResultsTable` --- dataframe of classification accuracy results and $p$-values for the top features
+* `FeatureFeatureCorrelationPlot` --- plot of pairwise correlations between the top features
+* `ViolinPlots` --- plot of values for the top features, coloured by class label
+
+### Summarising statistical results
+
+```{r, warning = FALSE, error = FALSE, message = FALSE}
+head(top_feature_results$ResultsTable)
+```
+
+### Understanding pairwise relationships between the top features
+
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
+print(top_feature_results$FeatureFeatureCorrelationPlot)
+```
+
+### Understanding the distribution of values for the top features
+
+```{r, warning = FALSE, error = FALSE, fig.height = 16, fig.width = 10, message = FALSE}
+print(top_feature_results$ViolinPlots)
+```
+
+## Final notes
+
+You can find the source code for `theft` on [GitHub](https://github.com/hendersontrent/theft), the `pkgdown` website with a fully rendered vignette for it on the [website](https://hendersontrent.github.io/theft/), and the user interface `R Shiny` web application implementation of `theft` [here](https://dynamicsandneuralsystems.shinyapps.io/timeseriesfeaturevis/).
