@@ -19,7 +19,7 @@ knitr::opts_chunk$set(echo = TRUE,
                       fig.align = "center")
 ```
 
-```{r setup, include = FALSE, echo = FALSE, warning = FALSE, error = FALSE}
+```{r, include = FALSE, echo = FALSE, warning = FALSE, error = FALSE}
 # Load the datasets (pre-run as they takes hours for all feature sets
 
 load("all_features.Rda")
@@ -60,10 +60,10 @@ This tutorial uses the [Bonn EEG dataset](https://journals.aps.org/pre/abstract/
 4. `hippocampus` --- hippocampal formation of the opposite hemisphere of the brain
 5. `seizure` --- seizure activity
 
-You can download and save this dataset wherever you like, and just pass that filepath into `theft::process_hctsa_file` which automatically processes the Matlab file into a nice tidy dataframe. I just have the dataset in my downloads (saved as "INP_Bonn_EEG.mat"), so I can run the following:
+You can download and save this dataset wherever you like, and just pass that filepath into `theft::process_hctsa_file` which automatically processes the Matlab file into a nice tidy dataframe. I have the dataset saved as "INP_Bonn_EEG.mat", so I can run the following:
 
 ```{r, include = FALSE, warning = FALSE, error = FALSE}
-tmp <- process_hctsa_file("/Users/trenthenderson/Downloads/INP_Bonn_EEG.mat") %>%
+tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
   mutate(id = unlist(id),
          group = unlist(group))
 ```
@@ -238,7 +238,9 @@ head(mf_results$RawClassificationResults)
 
 ## Identifying the top-performing individual features
 
-XX
+Fitting classifiers which use multiple features as inputs is often useful for building strong predictive models. However, we are also typically interested in understanding patterns in their dataset, such as interpreting the types of time-series analysis methods that best separate different classes, and the relationships between these top-performing features. This can be achieved using mass univariate statistical testing of individual features, quantifying their importance either with conventional statistical tests (e.g., $t$-tests, Wilcoxon Rank Sum Tests, and Signed Rank Tests), or with one-dimensional classification algorithms (e.g., linear SVM, random forest classifiers).
+
+`theft` implements the ability to identify top-performing features in the `theft::compute_top_features` function. For two-class problems, users can access these statistical tests by specifying either `test_method = "t-test"`, `test_method = "wilcox"`, or `test_method = "BinomialLogistic"` to fit the desired statistical test instead of a `caret` classification model. `theft::compute_top_features` allows users to fit the same set of `caret` classification models available in `theft::fit_multi_feature_classifier` in the one-dimensional space (i.e., the input to the algorithm is values on a single time-series feature), which can be used for two-class or multi-class problems (where traditional two-sample statistical tests cannot be used). Since we have a five-class problem here, we will stick with the linear SVM.
 
 ```{r, include = FALSE, warning = FALSE, error = FALSE}
 top_feature_results <- compute_top_features(all_features, 
@@ -259,6 +261,18 @@ top_feature_results <- compute_top_features(all_features,
                                             p_value_method = "gaussian",
                                             pool_empirical_null = FALSE,
                                             seed = 123)
+```
+
+`theft::compute_top_features` returns a list object with named entries. In our case, we have:
+
+* `ResultsTable` --- dataframe of classification accuracy results and $p$-values for the top features
+* `FeatureFeatureCorrelationPlot` --- plot of pairwise correlations between the top features
+* `ViolinPlots` --- plot of values for the top features, coloured by class label
+
+### Summarising statistical results
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+head(top_feature_results$ResultsTable)
 ```
 
 ### Understanding pairwise relationships between the top features
