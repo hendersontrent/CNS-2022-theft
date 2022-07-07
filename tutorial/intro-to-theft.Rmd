@@ -16,18 +16,151 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r setup, include = FALSE, echo = FALSE, warning = FALSE, error = FALSE}
+# Load the dataset (pre-run as it takes hours)
+load("all_features.Rda")
+```
+
 ## Setting up the R environment
 
 XX
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+We will first load the packages we need for the tutorial:
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+library(data.table)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(stringr)
+library(R.matlab)
+library(theft)
+library(scales)
+library(tidyr)
+library(microbenchmark)
+library(reticulate)
 ```
 
 ### A note on Python library installation
 
 XX
 
-##
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+### Retrieving the dataset
 
 XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## Understanding the dataset
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+set.seed(123)
+
+#' Function to sample IDs by class
+#' @param data the dataframe containing time-series data
+#' @param group_name string specifying the class to filter by
+#' @param n number of samples to generate
+#' @return object of class vector
+#' @author Trent Henderson
+#' 
+
+draw_samples <- function(data, group_name, n){
+  
+  samps <- data %>%
+    filter(group == group_name) %>%
+    dplyr::select(id) %>%
+    distinct() %>%
+    pull(id) %>%
+    sample(size = n) %>%
+    unlist()
+  
+  return(samps)
+}
+
+ids <- unique(tmp$group) %>%
+  purrr::map(~ draw_samples(data = tmp, group_name = .x, n = 1)) %>%
+  unlist()
+
+tsplot <- tmp %>%
+  filter(id %in% ids) %>%
+  mutate(id = gsub(".dat", "\\1", id)) %>%
+  ggplot(aes(x = timepoint, y = values, colour = group)) +
+  geom_line(size = 0.3) +
+  labs(title = "Raw time series samples from all five classes",
+       x = "Time",
+       y = "Value",
+       colour = NULL) +
+  scale_colour_brewer(palette = "Dark2") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(face = "bold")) +
+  facet_wrap(~id, ncol = 2, scales = "free_y")
+
+print(tsplot)
+```
+
+## Calculating time-series features
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
+
+## X
+
+XX
+
+```{r, include = FALSE, warning = FALSE, error = FALSE}
+
+```
