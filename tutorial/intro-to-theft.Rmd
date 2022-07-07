@@ -8,34 +8,28 @@ output:
     toc_float: true
     toc_collapsed: true
     toc_depth: 3
-    number_sections: true
     theme: lumen
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, warning = FALSE, error = FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE,
-                      fig.height = 8, 
-                      fig.width = 8, 
                       fig.align = "center")
 ```
 
-```{r, include = FALSE, echo = FALSE, warning = FALSE, error = FALSE}
+```{r, echo = FALSE, warning = FALSE, error = FALSE, message = FALSE}
 # Load the datasets (pre-run as they takes hours for all feature sets
 
 load("all_features.Rda")
 load("all_features_z.Rda")
+load("mf_results.Rda")
+load("top_feature_results.Rda")
 ```
-<center>
-
-![](logo.png)
-
-</center>
 
 ## Setting up the R environment
 
 We will first load the packages we need for the tutorial:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 library(dplyr)
 library(purrr)
 library(ggplot2)
@@ -46,7 +40,7 @@ library(theft)
 
 To access the three Python libraries included in `theft`---`Kats`, `TSFEL`, and `tsfresh`--- you must have installed them on your system; preferably to a clean environment. Once this is done, you can point R to the correct Python location for the libraries using `theft::init_theft` (here is mine, for example---**remember, yours might be different**):
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 init_theft("~/opt/anaconda3/bin/python")
 ```
 
@@ -62,7 +56,7 @@ This tutorial uses the [Bonn EEG dataset](https://journals.aps.org/pre/abstract/
 
 You can download and save this dataset wherever you like, and just pass that filepath into `theft::process_hctsa_file` which automatically processes the Matlab file into a nice tidy dataframe. I have the dataset saved as "INP_Bonn_EEG.mat", so I can run the following:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
   mutate(id = unlist(id),
          group = unlist(group))
@@ -72,7 +66,7 @@ tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
 
 Before running any feature-based time-series analysis, we will first graph the data to get a visual sense for any temporal dynamics, particularly differences between the classes. We can plot a random sample of two time series from each class:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 #' Function to sample IDs by class
 #' @param data the dataframe containing time-series data
 #' @param group_name string specifying the class to filter by
@@ -96,7 +90,8 @@ draw_samples <- function(data, group_name, n){
 }
 
 ids <- unique(tmp$group) %>%
-  purrr::map(~ draw_samples(data = tmp, group_name = .x, n = 2))
+  purrr::map(~ draw_samples(data = tmp, group_name = .x, n = 2)) %>%
+  unlist()
 
 tsplot <- tmp %>%
   filter(id %in% ids) %>%
@@ -122,7 +117,7 @@ print(tsplot)
 
 Extracting features from time series is straightforward in `theft`. The `calculate_features` function handles all of the work for computing features from six open source feature sets: (i) `catch22` (R, 22 features; R implementation on CRAN is [`Rcatch22`](https://github.com/hendersontrent/Rcatch22)); (ii) `feasts` (R; 42 features); (iii) `tsfeatures` (R, 63 features); (iv) `Kats` (Python, 40 features); (v) `TSFEL` (Python, 390 features); and (vi) `tsfresh` (Python, 779 features). Note that all I am passing to `calculate_features` is the appropriate column names and a vector of feature set names whose features I wish to calculate. Simple^[Behind the scenes, `theft` does all the data wrangling to standardise the input and output format across the six feature sets.].
 
-```{r, include = FALSE, warning = FALSE, error = FALSE, eval = FALSE}
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
 all_features <- calculate_features(data = tmp, 
                                    id_var = "id", 
                                    time_var = "timepoint", 
@@ -136,7 +131,7 @@ all_features <- calculate_features(data = tmp,
 
 Note that we will also calculate feature for $z$-scored time series to ensure feature set comparisons of classification performance are fair later on, as non-temporal properties, such as the first two moments of the distribution can often distinguish classes, and not all the feature sets measure these properties:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE, eval = FALSE}
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
 z_tmp <- tmp %>%
   group_by(id) %>%
   mutate(values = (values - mean(values, na.rm = TRUE)) / sd(values, na.rm = TRUE)) %>%
@@ -155,7 +150,7 @@ all_features_z <- calculate_features(data = z_tmp,
 
 We can visually inspect the proportion of successfully extracted values, `NaN` values, and `Inf` values using `theft::plot_quality_matrix`:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 plot_quality_matrix(all_features)
 ```
 
@@ -163,7 +158,7 @@ plot_quality_matrix(all_features)
 
 We can inspect the time series $\times$ feature matrix by plotting values as a heatmap graphic which applies hierarchical clustering to order the rows and columns such that any informative structure can be visually teased out. In `theft`, `theft::plot_all_features` does this:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 plot_all_features(all_features, 
                         is_normalised = FALSE,
                         id_var = "id", 
@@ -177,7 +172,7 @@ plot_all_features(all_features,
 
 The resulting feature space from running `theft::calculate_features` is large (the time series $\times$ feature matrix is $500 \times 1316$), which can make the data challenging to interpret. By reducing the dimensionality, down to, say, two dimensions, the resulting space is a lot of more interpretable. `theft` projects the feature matrix down to two dimensions to represent as a scatterplot in the `theft::plot_low_dimension` function. Currently, only principal components analysis (PCA) and $t$-distributed stochastic neighbour embedding ($t$-SNE) are supported. We will use $t$-SNE here, and draw a plot with the `perplexity` hyperparameter set to 15^[[See here](https://distill.pub/2016/misread-tsne/) for an excellent overview.]:
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 plot_low_dimension(all_features_z, 
                    is_normalised = FALSE, 
                    id_var = "id",
@@ -196,7 +191,7 @@ Time-series classification is a common use-case for features. `theft` implements
 
 *NOTE: balanced classification accuracy is not needed here as all classes have the same number of samples.*
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
 mf_results <- fit_multi_feature_classifier(all_features_z, # Note the use of z-scored data
                                            id_var = "id", 
                                            group_var = "group",
@@ -220,19 +215,19 @@ mf_results <- fit_multi_feature_classifier(all_features_z, # Note the use of z-s
 
 ### Comparing performance between feature sets
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 print(mf_results$FeatureSetResultsPlot)
 ```
 
 ### Summarising statistical results
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 head(mf_results$TestStatistics)
 ```
 
 ### Viewing raw classification outputs
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 head(mf_results$RawClassificationResults)
 ```
 
@@ -242,7 +237,7 @@ Fitting classifiers which use multiple features as inputs is often useful for bu
 
 `theft` implements the ability to identify top-performing features in the `theft::compute_top_features` function. For two-class problems, users can access these statistical tests by specifying either `test_method = "t-test"`, `test_method = "wilcox"`, or `test_method = "BinomialLogistic"` to fit the desired statistical test instead of a `caret` classification model. `theft::compute_top_features` allows users to fit the same set of `caret` classification models available in `theft::fit_multi_feature_classifier` in the one-dimensional space (i.e., the input to the algorithm is values on a single time-series feature), which can be used for two-class or multi-class problems (where traditional two-sample statistical tests cannot be used). Since we have a five-class problem here, we will stick with the linear SVM.
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, eval = FALSE, message = FALSE}
 top_feature_results <- compute_top_features(all_features, 
                                             id_var = "id", 
                                             group_var = "group",
@@ -271,19 +266,19 @@ top_feature_results <- compute_top_features(all_features,
 
 ### Summarising statistical results
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, message = FALSE}
 head(top_feature_results$ResultsTable)
 ```
 
 ### Understanding pairwise relationships between the top features
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 print(top_feature_results$FeatureFeatureCorrelationPlot)
 ```
 
 ### Understanding the distribution of values for the top features
 
-```{r, include = FALSE, warning = FALSE, error = FALSE}
+```{r, warning = FALSE, error = FALSE, fig.height = 16, fig.width = 10, message = FALSE}
 print(top_feature_results$ViolinPlots)
 ```
 

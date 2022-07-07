@@ -47,3 +47,4 @@ Meta
 # Bonn EEG dataset
 
 tutorial/*.mat
+tutorial/*.Rda
