@@ -64,7 +64,7 @@ tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
 
 ## Understanding the dataset
 
-Before running any feature-based time-series analysis, we will first graph the data to get a visual sense for any temporal dynamics, particularly differences between the classes. We can plot a random sample of two time series from each class:
+Before running any feature-based time-series analysis, we will first graph the data to get a visual sense for any temporal dynamics, particularly any differences between the classes. We can plot a random sample of two time series from each class:
 
 ```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 #' Function to sample IDs by class
@@ -125,6 +125,8 @@ all_features <- calculate_features(data = tmp,
                                    group_var = "group",
                                    feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
                                    seed = 123)
+
+head(all_features)
 ```
 
 ### z-scored version
@@ -138,12 +140,12 @@ z_tmp <- tmp %>%
   ungroup()
 
 all_features_z <- calculate_features(data = z_tmp, 
-                                   id_var = "id", 
-                                   time_var = "timepoint", 
-                                   values_var = "values", 
-                                   group_var = "group",
-                                   feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
-                                   seed = 123)
+                                     id_var = "id", 
+                                     time_var = "timepoint", 
+                                     values_var = "values", 
+                                     group_var = "group",
+                                     feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
+                                     seed = 123)
 ```
 
 ## Checking quality of extracted features
@@ -170,7 +172,7 @@ plot_all_features(all_features,
 
 ## Projecting the features into a lower dimension
 
-The resulting feature space from running `theft::calculate_features` is large (the time series $\times$ feature matrix is $500 \times 1316$), which can make the data challenging to interpret. By reducing the dimensionality, down to, say, two dimensions, the resulting space is a lot of more interpretable. `theft` projects the feature matrix down to two dimensions to represent as a scatterplot in the `theft::plot_low_dimension` function. Currently, only principal components analysis (PCA) and $t$-distributed stochastic neighbour embedding ($t$-SNE) are supported. We will use $t$-SNE here, and draw a plot with the `perplexity` hyperparameter set to 15^[[See here](https://distill.pub/2016/misread-tsne/) for an excellent overview.]:
+The resulting feature space from running `theft::calculate_features` is large (the time series $\times$ feature matrix is $500 \times 1316$), which can make the data challenging to interpret. By reducing the dimensionality, down to, say, two dimensions, the resulting space is a lot more interpretable. `theft` projects the feature matrix down to two dimensions to represent as a scatterplot in the `theft::plot_low_dimension` function. Currently, only principal components analysis (PCA) and $t$-distributed stochastic neighbour embedding ($t$-SNE) are supported. We will use $t$-SNE here, and draw a plot with the `perplexity` hyperparameter set to 15^[[See here](https://distill.pub/2016/misread-tsne/) for an excellent overview.]:
 
 ```{r, warning = FALSE, error = FALSE, fig.height = 8, fig.width = 8, message = FALSE}
 plot_low_dimension(all_features_z, 
@@ -233,7 +235,7 @@ head(mf_results$RawClassificationResults)
 
 ## Identifying the top-performing individual features
 
-Fitting classifiers which use multiple features as inputs is often useful for building strong predictive models. However, we are also typically interested in understanding patterns in their dataset, such as interpreting the types of time-series analysis methods that best separate different classes, and the relationships between these top-performing features. This can be achieved using mass univariate statistical testing of individual features, quantifying their importance either with conventional statistical tests (e.g., $t$-tests, Wilcoxon Rank Sum Tests, and Signed Rank Tests), or with one-dimensional classification algorithms (e.g., linear SVM, random forest classifiers).
+Fitting classifiers which use multiple features as inputs is often useful for building strong predictive models. However, we are also typically interested in understanding patterns in our dataset, such as interpreting the types of time-series analysis methods that best separate different classes, and the relationships between these top-performing features. This can be achieved using mass univariate statistical testing of individual features, quantifying their importance either with conventional statistical tests (e.g., $t$-tests, Wilcoxon Rank Sum Tests, and Signed Rank Tests), or with one-dimensional classification algorithms (e.g., linear SVM, random forest classifiers).
 
 `theft` implements the ability to identify top-performing features in the `theft::compute_top_features` function. For two-class problems, users can access these statistical tests by specifying either `test_method = "t-test"`, `test_method = "wilcox"`, or `test_method = "BinomialLogistic"` to fit the desired statistical test instead of a `caret` classification model. `theft::compute_top_features` allows users to fit the same set of `caret` classification models available in `theft::fit_multi_feature_classifier` in the one-dimensional space (i.e., the input to the algorithm is values on a single time-series feature), which can be used for two-class or multi-class problems (where traditional two-sample statistical tests cannot be used). Since we have a five-class problem here, we will stick with the linear SVM.
 
