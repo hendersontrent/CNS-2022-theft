@@ -1,7 +1,7 @@
 ---
 title: "The theft package for R"
 author: "Trent Henderson"
-date: "07/07/2022"
+date: "16/07/2022"
 output: 
   html_document:
     toc: true
@@ -60,6 +60,8 @@ You can download and save this dataset wherever you like, and just pass that fil
 tmp <- process_hctsa_file("INP_Bonn_EEG.mat") %>%
   mutate(id = unlist(id),
          group = unlist(group))
+
+head(tmp)
 ```
 
 ## Understanding the dataset
@@ -123,7 +125,8 @@ all_features <- calculate_features(data = tmp,
                                    time_var = "timepoint", 
                                    values_var = "values", 
                                    group_var = "group",
-                                   feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
+                                   feature_set = c("catch22", "feasts", "tsfeatures", 
+                                                   "tsfresh", "TSFEL", "Kats"),
                                    seed = 123)
 
 head(all_features)
@@ -144,7 +147,8 @@ all_features_z <- calculate_features(data = z_tmp,
                                      time_var = "timepoint", 
                                      values_var = "values", 
                                      group_var = "group",
-                                     feature_set = c("catch22", "feasts", "tsfeatures", "tsfresh", "TSFEL", "Kats"),
+                                     feature_set = c("catch22", "feasts", "tsfeatures", 
+                                                     "tsfresh", "TSFEL", "Kats"),
                                      seed = 123)
 ```
 
